@@ -1,0 +1,697 @@
+{
+  "name": "AI Automation Engineer Bot (Telegram) - Word & PDF Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## AI Automation Engineer Bot (Telegram)\n\nA Telegram AI assistant that helps you design, build and debug automations (n8n, Make, APIs, AI agents) and can **generate styled Word (.docx) and PDF files** on request.\n\n### Setup (about 10 minutes)\n1. **Telegram**: create a bot with @BotFather and add a *Telegram API* credential. Select it in the 4 Telegram nodes.\n2. **Groq** (primary model): add a *Groq* credential from console.groq.com.\n3. **Google Gemini** (fallback model): add a *Google Gemini (PaLM) API* credential from aistudio.google.com.\n4. **Google Drive**: add a *Google Drive OAuth2* credential and enable the **Google Drive API** in Google Cloud. Select it in the 3 Drive nodes.\n5. **Activate** the workflow and send your bot a message.\n\n### Try it\n- \"How do I retry a failed HTTP request in n8n?\"\n- \"Create a Word SOP for onboarding new clients\"\n- \"Make my CV as a PDF\"\n\nSee the GitHub README for the full guide.",
+        "height": 760,
+        "width": 560,
+        "color": 4
+      },
+      "id": "2edd0373-a01d-4d4b-a402-7f890e3cc0ce",
+      "name": "Sticky Note - Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 1. Chat flow\nTelegram message in -> typing indicator -> AI agent -> clean & split reply -> send back.\n\n- **Split Long Reply** strips Markdown symbols and splits answers into 2,500-character chunks (Telegram's hard limit is 4,096).\n- **Send Telegram Reply** uses HTML parse mode and escapes `& < >`, so underscores in file names or URLs never break the message.",
+        "height": 200,
+        "width": 1100,
+        "color": 7
+      },
+      "id": "69c5a904-aaab-416a-b634-b76c9e9c62a2",
+      "name": "Sticky Note - Chat Flow",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 2. The brain: model fallback + retry + memory\n- **Groq Chat Model** is the primary LLM. *Retry On Fail* is on (2 tries, 3 s wait) to ride out short per-minute rate limits.\n- **Gemini Fallback Model** is plugged into the agent's second model slot (*Enable Fallback Model*). If Groq still fails, the agent switches to Gemini automatically, with the same prompt, tools and memory.\n- **Simple Memory** keeps the last 10 messages per Telegram chat.\n\nTip: pick the fallback from a **different provider**, so one provider's outage or rate limit does not take both down.",
+        "height": 300,
+        "width": 560,
+        "color": 5
+      },
+      "id": "6e5120dd-53c4-4d08-8171-2644e1d3dc22",
+      "name": "Sticky Note - Brain",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 3. Document tools\nTwo *Call n8n Workflow* tools point back to **this same workflow** (`{{ $workflow.id }}`), so everything lives on one canvas:\n- **create_word_document** -> format `docx`\n- **create_pdf_document** -> format `pdf`\n\nThe agent writes the content in a lightweight markup (# title, ## section, - bullet, | table |, `### Role || Date`) and passes `title`, `content`, `chat_id` and `format`.",
+        "height": 300,
+        "width": 500,
+        "color": 6
+      },
+      "id": "1d845e12-eaa5-4b42-ad85-4d6a95772923",
+      "name": "Sticky Note - Tools",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        680,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 4. Document generation pipeline (no extra API needed)\n1. **Document Request** receives the tool call.\n2. **Build Styled HTML** turns the markup into HTML with inline CSS (fonts, colors, headings, nested lists, tables). Edit the *Theme* block in this node to restyle every document.\n3. **Create Google Doc** uploads the HTML to Google Drive with `mimeType = Google Doc`, so Drive converts it and keeps the styling.\n4. **Download as DOCX or PDF** exports the same Google Doc in the requested format.\n5. **Send File to Telegram** delivers the file, then **Delete Temporary Google Doc** cleans up Drive.\n6. **Return Result to Agent** tells the agent it worked, so it can reply with a short confirmation.",
+        "height": 260,
+        "width": 1620,
+        "color": 3
+      },
+      "id": "6b47e5fd-c016-44b5-91b9-e2f4936eadd9",
+      "name": "Sticky Note - Document Pipeline",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "d59bded9-4fc3-4b9f-8fbb-c2f2fb7d3d94",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        128,
+        400
+      ],
+      "webhookId": "276a55b6-29d5-4cff-99d4-c46fbca495d7"
+    },
+    {
+      "parameters": {
+        "operation": "sendChatAction",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}"
+      },
+      "id": "b0b5cc5b-c45f-49f6-ab88-e8c9b9c1bb52",
+      "name": "Send Typing Action",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        336,
+        400
+      ],
+      "webhookId": "9c573270-a2bb-4be8-97b8-4247deb8ddf4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Telegram Trigger').item.json.message.text }}",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "=You are a senior AI Automation Engineer with hands-on experience building business automations and AI agents. You help the user through Telegram chat.\n\nCurrent time: {{ $now.setZone(\"Asia/Jakarta\").toFormat(\"cccc, dd LLLL yyyy HH:mm\") }} (Asia/Jakarta).\n\nCORE EXPERTISE\n- Automation platforms: n8n (nodes, expressions, sub-workflows, error handling, self-hosting), Make, Zapier.\n- AI agents and LLMs: system prompt design, tool calling, memory, RAG, model selection (OpenAI, Gemini, Claude, Groq, OpenRouter) and the cost, speed and quality trade-offs.\n- Integrations: REST APIs, webhooks, OAuth, JSON, Google Workspace, Telegram Bot API, databases.\n- Supporting skills: JavaScript and Python for Code nodes, regex, cron, Docker and debugging.\n\nACCURACY RULES (MOST IMPORTANT)\n1. Never make things up. Do not invent node names, parameters, API endpoints, features, prices or versions you are not sure exist.\n2. Clearly separate what you know from what you are unsure about. When unsure, say so and point to the official docs (for example docs.n8n.io).\n3. Your knowledge has a cut-off and you cannot browse. For fast-changing facts (pricing, free tiers, latest versions, model names) say the information may be outdated and suggest checking the official source.\n4. If the question is ambiguous or key details are missing (platform, expected input and output, full error message, version), ask 1 to 3 short clarifying questions first.\n5. When there are several approaches, recommend the best fit with a reason, then briefly mention the alternatives.\n6. If the user's idea carries a risk (security, runaway cost, rate limits, leaked API keys, data loss), say so honestly and offer a fix.\n\nHOW TO THINK BEFORE ANSWERING\n- Understand the user's end goal, not just the literal question.\n- Break solutions into a clear flow: trigger, processing, output and error handling.\n- For debugging, find the root cause from the error first, then give fixes ordered from most to least likely.\n- Before replying, double-check that everything you mention really exists and works.\n\nCREATING WORD OR PDF FILES\n- You have two document tools that produce the same styled layout:\n  1. create_word_document: sends an editable .docx file. Use it when the user asks for a document, a Word file or a .docx.\n  2. create_pdf_document: sends a .pdf file for final documents. Use it ONLY when the user mentions PDF.\n- Call only ONE of the two tools per request, unless the user clearly asks for both.\n- Good fits: SOPs, guides, proposals, CVs, reports, summaries or workflow designs as documents.\n- Write the full document content; the 2,500-character chat limit does not apply to documents.\n- The document content (not the chat reply) MUST use this markup so the file looks clean:\n  # Document Title on the first line (for a CV: full name)\n  > subtitle right below the title (for a CV: target role)\n  @ small info line below it (for a CV: city | phone | email | LinkedIn | GitHub)\n  ## Section Title (for example Professional Summary, Experience, Skills, Education)\n  ### Item title || right-aligned note (for example: ### Senior Mechanical Engineer || Jan 2015 - Present)\n  > item subtitle right below ### (for example the company name)\n  - for bullets, 1. for numbered steps, **text** for bold, _text_ for italic\n  tables as | Column A | Column B | followed by a |---|---| separator row\n  For skill lists write one line per category, like **Category:** skills.\n  Separate paragraphs with a blank line. Do not use HTML.\n- After the tool succeeds, reply briefly that the file has been sent, with a one or two sentence summary. Do not repeat the document content in chat.\n- If the tool fails, say honestly that the file could not be created and offer to write the content directly in chat.\n\nCHAT REPLY STYLE\n- Reply in the user's language. Be friendly, clear and to the point.\n- Lead with the answer, then the details. Use simple everyday analogies for complex ideas.\n- Chat replies are plain text. Do not use Markdown symbols such as asterisks, hashes or horizontal rules, and no tables, because Telegram shows them as raw symbols. This rule does not apply to Word or PDF content.\n- Use short numbered steps or simple dashes for technical steps.\n- Write code and expressions as-is, concise and ready to copy.\n- Do not claim you built, ran or tested a workflow, because you only give guidance in chat. Exception: Word and PDF files created through your tools.\n\nLENGTH: keep chat replies under about 2,500 characters. For broad topics such as idea lists, give the best 3 options briefly, then offer to go deeper on one."
+        }
+      },
+      "id": "b70b81d5-c9d8-4957-93d6-a8dfc154dd89",
+      "name": "AI Automation Engineer Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        544,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "73da195d-4d32-4049-90c5-e7a21a08093d",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        160,
+        880
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "0bd940bc-bb00-46af-8795-1b6aeb6edbc9",
+      "name": "Gemini Fallback Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "contextWindowLength": 10
+      },
+      "id": "148c7d28-8764-406c-953d-7cbbcab81e14",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        480,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Creates a styled Microsoft Word (.docx) file and sends it straight to the user's Telegram chat. Use ONLY when the user asks for a document, a Word file or a .docx. Content markup: # Title, > subtitle, @ info line, ## Section, ### Item || right note, > item subtitle, - bullet, 1. step, **bold**, _italic_, | table | with a |---| separator row.",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $fromAI('title', 'Short, clear document title without file extension', 'string') }}",
+            "content": "={{ $fromAI('content', 'Full document content. Markup: # Title on the first line, > subtitle, @ small info line, ## Section Title, ### Item title || right-aligned note (for example a date), > item subtitle, - bullet, 1. numbered step, **bold**, _italic_, tables as | col | col | with a |---|---| separator row. Separate paragraphs with a blank line.', 'string') }}",
+            "chat_id": "={{ String($('Telegram Trigger').item.json.message.chat.id) }}",
+            "format": "docx"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "format",
+              "displayName": "format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "0149bd9b-c43b-4fd5-8bfc-40918a61cf54",
+      "name": "create_word_document",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        760,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Creates a styled PDF file (same layout as the Word document) and sends it straight to the user's Telegram chat. Use ONLY when the user asks for a PDF. Content markup: # Title, > subtitle, @ info line, ## Section, ### Item || right note, > item subtitle, - bullet, 1. step, **bold**, _italic_, | table | with a |---| separator row.",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $fromAI('title', 'Short, clear document title without file extension', 'string') }}",
+            "content": "={{ $fromAI('content', 'Full document content. Markup: # Title on the first line, > subtitle, @ small info line, ## Section Title, ### Item title || right-aligned note (for example a date), > item subtitle, - bullet, 1. numbered step, **bold**, _italic_, tables as | col | col | with a |---|---| separator row. Separate paragraphs with a blank line.', 'string') }}",
+            "chat_id": "={{ String($('Telegram Trigger').item.json.message.chat.id) }}",
+            "format": "pdf"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "format",
+              "displayName": "format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "94584e8a-91d9-4e79-aa2d-ea5d3592559c",
+      "name": "create_pdf_document",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Strip Markdown symbols (Telegram does not render them) and split the reply into chunks of max 2,500 characters\nconst LIMIT = 2500;\nlet text = String($input.first().json.output || '').trim();\n\ntext = text\n  .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n  .replace(/__(.+?)__/g, '$1')\n  .replace(/^#{1,6}\\s*/gm, '')\n  .replace(/^\\s*-{3,}\\s*$/gm, '')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nconst chunks = [];\nlet current = '';\n\nconst push = (piece, sep) => {\n  if (!current) { current = piece; return; }\n  if ((current + sep + piece).length <= LIMIT) { current += sep + piece; return; }\n  chunks.push(current);\n  current = piece;\n};\n\nfor (const para of text.split(/\\n{2,}/)) {\n  if (para.length <= LIMIT) { push(para, '\\n\\n'); continue; }\n  // Paragraph too long: split by line, then by word\n  for (const line of para.split('\\n')) {\n    let part = line;\n    while (part.length > LIMIT) {\n      if (current) { chunks.push(current); current = ''; }\n      let cut = part.lastIndexOf(' ', LIMIT);\n      if (cut < LIMIT * 0.5) cut = LIMIT;\n      chunks.push(part.slice(0, cut).trim());\n      part = part.slice(cut).trim();\n    }\n    if (part) push(part, '\\n');\n  }\n}\nif (current) chunks.push(current);\nif (chunks.length === 0) chunks.push('Sorry, I could not answer that. Please try again.');\n\nreturn chunks.map((c, i) => ({\n  json: { output: chunks.length > 1 ? `${c}\\n\\n(${i + 1}/${chunks.length})` : c },\n  pairedItem: { item: 0 },\n}));"
+      },
+      "id": "1a8d004d-709d-477e-9cd1-dcc148a33bc1",
+      "name": "Split Long Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "={{ $json.output.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "bdbc73ff-f661-4856-a73b-e0f9938ee76a",
+      "name": "Send Telegram Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        400
+      ],
+      "webhookId": "cd88cc20-9254-454e-991a-517f820963ba"
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "title",
+              "type": "string"
+            },
+            {
+              "name": "content",
+              "type": "string"
+            },
+            {
+              "name": "chat_id",
+              "type": "string"
+            },
+            {
+              "name": "format",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "8794b376-adec-41b3-ad01-1aad7d6fe68e",
+      "name": "Document Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        128,
+        1480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convert the agent's lightweight markup into styled HTML, then build a multipart body\n// that uploads it to Google Drive and converts it into a Google Doc in one request.\nconst input = $('Document Request').first().json;\nconst title = String(input.title || 'Document').trim() || 'Document';\nconst md = String(input.content || '').replace(/\\r\\n/g, '\\n').trim();\n\nconst esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst inline = (s) => esc(s)\n  .replace(/\\*\\*(.+?)\\*\\*/g, '<b>$1</b>')\n  .replace(/(^|[\\s(])_([^_]+?)_(?=$|[\\s).,;:!?])/g, '$1<i>$2</i>');\n\n// ---- Theme: change colors and fonts here ----\nconst C = { accent: '#1F3864', dark: '#1e293b', text: '#334155', sub: '#475569', muted: '#64748b', border: '#B4C6E7', thBg: '#D9E2F3' };\nconst F = 'font-family:Times New Roman,Times,serif;';\nconst S = {\n  h1: F + 'font-size:20pt;font-weight:bold;color:' + C.accent + ';margin:0 0 4pt 0;',\n  title: F + 'font-size:11pt;font-weight:bold;color:' + C.sub + ';margin:0 0 4pt 0;',\n  info: F + 'font-size:11pt;color:' + C.muted + ';margin:0 0 2pt 0;',\n  h2: F + 'font-size:12pt;font-weight:bold;color:' + C.accent + ';margin:14pt 0 0 0;',\n  h3: F + 'font-size:11pt;font-weight:bold;color:' + C.dark + ';margin:10pt 0 2pt 0;',\n  sub: F + 'font-size:11pt;font-weight:bold;color:' + C.accent + ';margin:0 0 4pt 0;',\n  p: F + 'font-size:11pt;font-weight:normal;color:' + C.text + ';line-height:1.5;margin:0 0 8pt 0;',\n  li: F + 'font-size:11pt;font-weight:normal;color:' + C.text + ';line-height:1.5;margin:0 0 3pt 0;',\n  spacer: F + 'font-size:6pt;font-weight:normal;line-height:1;margin:0;',\n  rowTable: 'border-collapse:collapse;width:100%;margin:10pt 0 2pt 0;border:none;',\n  rowLeft: F + 'font-size:11pt;font-weight:bold;color:' + C.dark + ';border:none;padding:0;text-align:left;',\n  rowRight: F + 'font-size:11pt;font-style:italic;color:' + C.muted + ';border:none;padding:0;text-align:right;',\n  table: 'border-collapse:collapse;width:100%;margin:6pt 0 10pt 0;',\n  th: F + 'font-size:11pt;font-weight:bold;color:' + C.accent + ';background-color:' + C.thBg + ';border:1px solid ' + C.border + ';padding:4pt;',\n  td: F + 'font-size:11pt;color:' + C.text + ';border:1px solid ' + C.border + ';padding:4pt;'\n};\n\n// Horizontal rule followed by a small spacer paragraph, so Google Docs does not\n// attach the line to the next bullet or paragraph\nconst LINE = '<hr><p style=\"' + S.spacer + '\">&nbsp;</p>';\n\nconst out = [];\nlet para = [];\nlet table = [];\nlet olOpen = false;    // numbered list is open\nlet liOpen = false;    // last numbered item is still open (for nested bullets)\nlet subUlOpen = false; // nested bullets under a numbered item\nlet ulOpen = false;    // plain bullet list\nlet olCount = 0;       // last number in this section, so numbering continues\nlet inHeader = false;  // header block: after \"# Title\" until the first content line\n\nconst closeSub = () => { if (subUlOpen) { out.push('</ul>'); subUlOpen = false; } };\nconst closeLi = () => { closeSub(); if (liOpen) { out.push('</li>'); liOpen = false; } };\nconst closeOl = () => { closeLi(); if (olOpen) { out.push('</ol>'); olOpen = false; } };\nconst closeUl = () => { if (ulOpen) { out.push('</ul>'); ulOpen = false; } };\nconst flushLists = () => { closeOl(); closeUl(); };\nconst flushPara = () => { if (para.length) { out.push('<p style=\"' + S.p + '\">' + para.map(inline).join('<br>') + '</p>'); para = []; } };\nconst cells = (r) => r.replace(/^\\s*\\|/, '').replace(/\\|\\s*$/, '').split('|').map((c) => c.trim());\nconst flushTable = () => {\n  if (!table.length) return;\n  const rows = table.filter((r) => !(/^[\\s|:-]+$/.test(r) && r.includes('-')));\n  let html = '<table style=\"' + S.table + '\">';\n  rows.forEach((r, i) => {\n    const tag = i === 0 ? 'th' : 'td';\n    html += '<tr>' + cells(r).map((c) => '<' + tag + ' style=\"' + S[tag] + '\">' + inline(c) + '</' + tag + '>').join('') + '</tr>';\n  });\n  out.push(html + '</table>');\n  table = [];\n};\nconst flushAll = () => { flushPara(); flushLists(); flushTable(); };\n\n// Divider under the header block (name, role, contact line)\nconst closeHeader = () => { if (inHeader) { flushPara(); out.push(LINE); inHeader = false; } };\n\n// \"left || right\" line: bold item title on the left, italic note right-aligned (borderless table)\nconst rowLine = (left, right) => '<table style=\"' + S.rowTable + '\"><tr><td style=\"' + S.rowLeft + '\">' + inline(left) + '</td><td style=\"' + S.rowRight + '\">' + inline(right) + '</td></tr></table>';\n\n// If the content does not start with a \"# Title\", use the document title\nif (!/^#\\s/.test(md)) { out.push('<h1 style=\"' + S.h1 + '\">' + esc(title.toUpperCase()) + '</h1>'); inHeader = true; }\n\nfor (const raw of md.split('\\n')) {\n  const t = raw.trim();\n\n  // Blank line closes paragraphs and tables, but does NOT break a numbered list\n  if (!t) { flushPara(); flushTable(); continue; }\n\n  // Header block: \"> role/subtitle\" and \"@ small info line\"\n  if (inHeader) {\n    if (t.startsWith('> ')) { out.push('<p style=\"' + S.title + '\">' + inline(t.slice(2)) + '</p>'); continue; }\n    if (t.startsWith('@ ')) { out.push('<p style=\"' + S.info + '\">' + inline(t.slice(2)) + '</p>'); continue; }\n    closeHeader();\n  }\n\n  if (t.startsWith('|')) { flushPara(); flushLists(); table.push(t); continue; }\n  flushTable();\n\n  let m = t.match(/^(#{1,3})\\s+(.*)$/);\n  if (m) {\n    flushAll();\n    olCount = 0; // new section, numbering restarts at 1\n    const lv = m[1].length;\n    const text = m[2];\n    if (lv === 1) { out.push('<h1 style=\"' + S.h1 + '\">' + inline(text.toUpperCase()) + '</h1>'); inHeader = true; continue; }\n    if (lv === 2) { out.push('<h2 style=\"' + S.h2 + '\">' + inline(text.toUpperCase()) + '</h2>'); out.push(LINE); continue; }\n    const parts = text.split(/\\s*\\|\\|\\s*/);\n    if (parts.length > 1) out.push(rowLine(parts[0], parts.slice(1).join(' ')));\n    else out.push('<h3 style=\"' + S.h3 + '\">' + inline(text) + '</h3>');\n    continue;\n  }\n\n  // \"> subtitle\" in accent color (for example a company name under a job title)\n  if (t.startsWith('> ')) { flushPara(); flushLists(); out.push('<p style=\"' + S.sub + '\">' + inline(t.slice(2)) + '</p>'); continue; }\n  // \"@ small muted info line\"\n  if (t.startsWith('@ ')) { flushPara(); flushLists(); out.push('<p style=\"' + S.info + '\">' + inline(t.slice(2)) + '</p>'); continue; }\n\n  m = t.match(/^\\d+[.)]\\s+(.*)$/);\n  if (m) {\n    flushPara(); closeUl(); closeLi();\n    if (!olOpen) { out.push('<ol' + (olCount ? ' start=\"' + (olCount + 1) + '\"' : '') + '>'); olOpen = true; }\n    olCount++;\n    out.push('<li style=\"' + S.li + '\">' + inline(m[1]));\n    liOpen = true;\n    continue;\n  }\n\n  m = t.match(/^[-*•]\\s+(.*)$/);\n  if (m) {\n    flushPara();\n    if (olOpen && liOpen) {\n      // A bullet right under a numbered item becomes a nested sub-point (numbering stays continuous)\n      if (!subUlOpen) { out.push('<ul>'); subUlOpen = true; }\n      out.push('<li style=\"' + S.li + '\">' + inline(m[1]) + '</li>');\n    } else {\n      closeOl();\n      if (!ulOpen) { out.push('<ul>'); ulOpen = true; }\n      out.push('<li style=\"' + S.li + '\">' + inline(m[1]) + '</li>');\n    }\n    continue;\n  }\n\n  if (/^-{3,}$/.test(t)) { flushAll(); continue; }\n\n  // Plain \"left || right\" line\n  if (/\\s\\|\\|\\s/.test(t)) { flushPara(); flushLists(); const p = t.split(/\\s*\\|\\|\\s*/); out.push(rowLine(p[0], p.slice(1).join(' '))); continue; }\n\n  flushLists();\n  para.push(t);\n}\nflushAll();\ncloseHeader();\n\nconst html = '<html><head><meta charset=\"UTF-8\"></head><body>' + out.join('\\n') + '</body></html>';\nconst boundary = 'n8nDocBoundary7f3a';\nconst meta = JSON.stringify({ name: title, mimeType: 'application/vnd.google-apps.document' });\nconst body = '--' + boundary + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + meta + '\\r\\n--' + boundary + '\\r\\nContent-Type: text/html; charset=UTF-8\\r\\n\\r\\n' + html + '\\r\\n--' + boundary + '--';\n\nreturn [{ json: { body, boundary } }];"
+      },
+      "id": "d6bba04f-b136-455b-aa1e-9366a27d141c",
+      "name": "Build Styled HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        1480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=multipart/related; boundary={{ $json.boundary }}",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "4197c35d-1cd3-442d-9789-ba6b53a1c193",
+      "name": "Create Google Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        576,
+        1480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "={{ $('Document Request').item.json.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }}"
+            }
+          },
+          "fileName": "={{ ($('Document Request').item.json.title || 'Document').replace(/[\\\\/:*?\"<>|]/g, '').trim() || 'Document' }}.{{ $('Document Request').item.json.format === 'pdf' ? 'pdf' : 'docx' }}"
+        }
+      },
+      "id": "d1c2bc24-924e-4e86-8827-d504043a6404",
+      "name": "Download as DOCX or PDF",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        800,
+        1480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendDocument",
+        "chatId": "={{ $('Document Request').item.json.chat_id }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "=📄 {{ ($('Document Request').item.json.title || 'Document').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+          "parse_mode": "HTML",
+          "fileName": "={{ ($('Document Request').item.json.title || 'Document').replace(/[\\\\/:*?\"<>|]/g, '').trim() || 'Document' }}.{{ $('Document Request').item.json.format === 'pdf' ? 'pdf' : 'docx' }}"
+        }
+      },
+      "id": "feab7444-3c58-4d01-9a96-2fd36593b60b",
+      "name": "Send File to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1024,
+        1480
+      ],
+      "webhookId": "ece70eb5-ff97-435f-9aca-25455cd61f9a"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "deleteFile",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Create Google Doc').item.json.id }}"
+        },
+        "options": {
+          "deletePermanently": true
+        }
+      },
+      "id": "b97b0857-d78f-4299-b514-3528c6c51c63",
+      "name": "Delete Temporary Google Doc",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1248,
+        1480
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "52b54cf7-0fc5-4111-bcb6-dfe20dbbe52d",
+              "name": "status",
+              "type": "string",
+              "value": "=Success: the {{ $('Document Request').item.json.format === 'pdf' ? 'PDF' : 'Word' }} file \"{{ $('Document Request').item.json.title }}.{{ $('Document Request').item.json.format === 'pdf' ? 'pdf' : 'docx' }}\" has been sent to the user's chat."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8d1c2d74-3b6b-42b2-99d0-8940328a9a8b",
+      "name": "Return Result to Agent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1472,
+        1480
+      ],
+      "executeOnce": true
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send Typing Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Typing Action": {
+      "main": [
+        [
+          {
+            "node": "AI Automation Engineer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Automation Engineer Agent": {
+      "main": [
+        [
+          {
+            "node": "Split Long Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Long Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Automation Engineer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Fallback Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Automation Engineer Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Automation Engineer Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_word_document": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Automation Engineer Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_pdf_document": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Automation Engineer Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Request": {
+      "main": [
+        [
+          {
+            "node": "Build Styled HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Styled HTML": {
+      "main": [
+        [
+          {
+            "node": "Create Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Download as DOCX or PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download as DOCX or PDF": {
+      "main": [
+        [
+          {
+            "node": "Send File to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send File to Telegram": {
+      "main": [
+        [
+          {
+            "node": "Delete Temporary Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Temporary Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Return Result to Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
